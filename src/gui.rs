@@ -24,12 +24,52 @@ fn measure_text_width(text: &str, font: &Font, size: f32) -> f32 {
 
 pub struct IdeApp {
     editor: Editor,
+    current_file: Option<std::path::PathBuf>,
 }
 
 impl IdeApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
             editor: Editor::new(),
+            current_file: None,
+        }
+    }
+
+    // Открытие файлов
+    pub fn open_file(&mut self) {
+        if let Some(path) = rfd::FileDialog::new().pick_file() {
+            if let Ok(contents) = std::fs::read_to_string(&path) {
+                self.editor.set_text(&contents);
+                self.current_file = Some(path);
+                println!("File open: {:?}", self.current_file);
+            } else {
+                eprintln!("Error open file")
+            }
+        }
+    }
+
+    // сохранение файлов
+    pub fn save_file(&mut self) {
+        if let Some(path) = &self.current_file {
+            if let Err(e) = std::fs::write(path, self.editor.get_text()) {
+                eprintln!("Error save: {}", e);
+            } else {
+                println!("File save {:?}", path);
+            }
+        } else {
+            self.save_as();
+        }
+    }
+
+    // Сохранит как
+    pub fn save_as(&mut self) {
+        if let Some(path) = rfd::FileDialog::new().save_file() {
+            if let Err(e) = std::fs::write(&path, self.editor.get_text()) {
+                eprintln!("Error to save: {}", e);
+            } else {
+                self.current_file = Some(path);
+                println!("File save as: {:?}", self.current_file);
+            }
         }
     }
 }
@@ -60,6 +100,28 @@ impl eframe::App for IdeApp {
             if i.key_pressed(egui::Key::ArrowRight) {
                 self.editor.move_right();
             }
+        });
+
+        egui::Panel::top("toolbar").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open").clicked() {
+                        self.open_file();
+                    }
+                    if ui.button("Save").clicked() {
+                        self.save_file();
+                    }
+                    if ui.button("Save as").clicked() {
+                        self.save_as();
+                    }
+                });
+                ui.separator();
+                if let Some(path) = &self.current_file {
+                    ui.label(format!("File: {}", path.display()));
+                } else {
+                    ui.label("Not file open");
+                }
+            })
         });
 
         let font_size = 14.0;

@@ -53,4 +53,13 @@ impl Editor {
     pub fn current_line(&self) -> usize {
         self.text.char_to_line(self.cursor_idx)
     }
+
+    pub fn set_text(&mut self, text: &str) {
+        self.text = Rope::from_str(text);
+        self.cursor_idx = 0;
+    }
+
+    pub fn get_text(&self) -> String {
+        self.text.to_string()
+    }
 }
