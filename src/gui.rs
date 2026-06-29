@@ -1,57 +1,53 @@
-use crate::text_core::Editor;
-use egui::{Align2, Color32, FontId, Pos2, Stroke};
-use fontdue::Font;
-use std::sync::OnceLock;
+use iced::widget::{container, button, column};
+use iced::{Element, Task};
+use iced_code_editor::{CodeEditor, Message as EditorMessage};
+use iced_aw::menu::{Item, Menu, MenuBar};
 
-static FONT: OnceLock<Font> = OnceLock::new();
-
-fn get_font() -> &'static Font {
-    FONT.get_or_init(|| {
-        let font_data = include_bytes!("../fonts/JetBrainsMono-Regular.ttf");
-        Font::from_bytes(font_data.as_slice(), fontdue::FontSettings::default())
-            .expect("Не удалось загрузить шрифт")
-    })
-}
-
-fn measure_text_width(text: &str, font: &Font, size: f32) -> f32 {
-    let mut width = 0.0;
-    for ch in text.chars() {
-        let (metrics, _) = font.rasterize(ch, size);
-        width += metrics.advance_width;
-    }
-    width
-}
-
-pub struct IdeApp {
-    editor: Editor,
+pub struct MyApp {
+    editor: CodeEditor,
     current_file: Option<std::path::PathBuf>,
 }
 
-impl IdeApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+#[derive(Debug, Clone)]
+pub enum Message {
+    EditorEvent(EditorMessage),
+    Open,
+    Save,
+    SaveAs,
+    Exit,
+}
+
+impl Default for MyApp {
+    fn default() -> Self {
+        let code = r#"fn main() {
+    println!("Hello, world!");
+}
+"#;
         Self {
-            editor: Editor::new(),
+            editor: CodeEditor::new(code, "rust"),
             current_file: None,
         }
     }
+}
 
-    // Открытие файлов
-    pub fn open_file(&mut self) {
+impl MyApp {
+    fn open_file(&mut self) -> Task<Message> {
         if let Some(path) = rfd::FileDialog::new().pick_file() {
             if let Ok(contents) = std::fs::read_to_string(&path) {
-                self.editor.set_text(&contents);
+                self.editor = CodeEditor::new(&contents, "rs");
                 self.current_file = Some(path);
                 println!("File open: {:?}", self.current_file);
             } else {
-                eprintln!("Error open file")
+                eprintln!("Error to read file");
             }
         }
+        Task::none()
     }
 
-    // сохранение файлов
-    pub fn save_file(&mut self) {
+    pub fn save_file(&mut self) -> Task<Message> {
         if let Some(path) = &self.current_file {
-            if let Err(e) = std::fs::write(path, self.editor.get_text()) {
+            let content = self.editor.content();
+            if let Err(e) = std::fs::write(path, content) {
                 eprintln!("Error save: {}", e);
             } else {
                 println!("File save {:?}", path);
@@ -59,111 +55,57 @@ impl IdeApp {
         } else {
             self.save_as();
         }
+        Task::none()
     }
 
-    // Сохранит как
-    pub fn save_as(&mut self) {
+    pub fn save_as(&mut self) -> Task<Message> {
         if let Some(path) = rfd::FileDialog::new().save_file() {
-            if let Err(e) = std::fs::write(&path, self.editor.get_text()) {
+            let content = self.editor.content();
+            if let Err(e) = std::fs::write(&path, content) {
                 eprintln!("Error to save: {}", e);
             } else {
                 self.current_file = Some(path);
                 println!("File save as: {:?}", self.current_file);
             }
         }
+        Task::none()
     }
 }
 
-impl eframe::App for IdeApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        ui.input(|i| {
-            for event in &i.events {
-                if let egui::Event::Text(text) = event {
-                    for ch in text.chars() {
-                        self.editor.insert_char(ch);
-                    }
-                }
+impl MyApp {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::EditorEvent(event) => {
+                self.editor.update(&event).map(Message::EditorEvent)
             }
-
-            if i.key_pressed(egui::Key::Backspace) {
-                self.editor.delete_backspace();
+            Message::Open => self.open_file(),
+            Message::Save => self.save_file(),
+            Message::SaveAs => self.save_as(),
+            Message::Exit => {
+                std::process::exit(0);
             }
+        }
+    }
 
-            if i.key_pressed(egui::Key::Enter) {
-                self.editor.insert_enter();
-            }
+    pub fn view(&self) -> Element<'_, Message> {
+        let open_item = Item::new(button("Open").on_press(Message::Open));
+        let save_item = Item::new(button("Save").on_press(Message::Save));
+        let save_as_item = Item::new(button("Save As").on_press(Message::SaveAs));
+        let exit_item = Item::new(button("Exit").on_press(Message::Exit));
 
-            if i.key_pressed(egui::Key::ArrowLeft) {
-                self.editor.move_left();
-            }
+        let file_menu = Item::with_menu(
+            button("File"),
+            Menu::new(vec![open_item, save_item, save_as_item, exit_item]).width(100),
+        );
 
-            if i.key_pressed(egui::Key::ArrowRight) {
-                self.editor.move_right();
-            }
-        });
+        let menu_bar = MenuBar::new(vec![file_menu]);
 
-        egui::Panel::top("toolbar").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Open").clicked() {
-                        self.open_file();
-                    }
-                    if ui.button("Save").clicked() {
-                        self.save_file();
-                    }
-                    if ui.button("Save as").clicked() {
-                        self.save_as();
-                    }
-                });
-                ui.separator();
-                if let Some(path) = &self.current_file {
-                    ui.label(format!("File: {}", path.display()));
-                } else {
-                    ui.label("Not file open");
-                }
-            })
-        });
+        let editor_widget = self.editor.view().map(Message::EditorEvent);
 
-        let font_size = 14.0;
-        let row_height = 18.0;
-        let start_x = 15.0;
-        let start_y = 50.0;
-
-        let current_line = self.editor.current_line();
-        let text_before_cursor = self.editor.text_before_cursor_in_line();
-
-        let text_width = if text_before_cursor.is_empty() {
-            0.0
-        } else {
-            measure_text_width(&text_before_cursor, get_font(), font_size)
-        };
-
-        egui::CentralPanel::default().show(ui, |ui_panel| {
-            ui_panel.heading("Quartz IDE");
-            ui_panel.add_space(10.0);
-
-            let painter = ui_panel.painter();
-
-            for (row_idx, line) in self.editor.text.lines().enumerate() {
-                let y = start_y + (row_idx as f32 * row_height);
-                painter.text(
-                    Pos2::new(start_x, y),
-                    Align2::LEFT_TOP,
-                    line.to_string().trim_end_matches('\n'),
-                    FontId::monospace(font_size as f32),
-                    Color32::from_rgb(200, 200, 200),
-                );
-            }
-
-            let cursor_x = start_x + text_width;
-            let cursor_y = start_y + (current_line as f32 * row_height);
-            painter.line_segment(
-                [
-                    Pos2::new(cursor_x, cursor_y),
-                    Pos2::new(cursor_x, cursor_y + row_height),
-                ],
-                Stroke::new(2.0, Color32::from_rgb(100, 200, 255)),
-            );
-        });
+        column![
+            menu_bar,
+            container(editor_widget).padding(20)
+        ]
+        .into()
     }
 }
