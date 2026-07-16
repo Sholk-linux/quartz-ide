@@ -1,5 +1,5 @@
 use iced::widget::{container, button, column};
-use iced::{Element, Task};
+use iced::{Color, Element, Task, Theme};
 use iced_code_editor::{CodeEditor, Message as EditorMessage};
 use iced_aw::menu::{Item, Menu, MenuBar};
 
@@ -53,7 +53,7 @@ impl MyApp {
                 println!("File save {:?}", path);
             }
         } else {
-            self.save_as();
+            let _ = self.save_as();
         }
         Task::none()
     }
@@ -69,6 +69,31 @@ impl MyApp {
             }
         }
         Task::none()
+    }
+}
+
+impl MyApp { //Styles
+    fn button_non_backround(theme: &Theme, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Active => button::Style {
+                background: Some(iced::Background::Color(Color::TRANSPARENT)),
+                text_color: Color::WHITE,
+                ..button::Style::default()
+            },            
+            button::Status::Hovered => button::Style {
+                background: Some(iced::Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.1))),
+                text_color: Color::WHITE,
+                ..button::Style::default()
+            },
+            button::Status::Pressed => button::Style {
+                background: Some(iced::Background::Color(Color::from_rgba(1.0, 1.0, 1.0, 0.5))),
+                text_color: Color::WHITE,
+                ..button::Style::default()
+            },
+
+
+            _ => button::primary(theme, status),
+        }
     }
 }
 
@@ -88,14 +113,14 @@ impl MyApp {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let open_item = Item::new(button("Open").on_press(Message::Open));
-        let save_item = Item::new(button("Save").on_press(Message::Save));
-        let save_as_item = Item::new(button("Save As").on_press(Message::SaveAs));
-        let exit_item = Item::new(button("Exit").on_press(Message::Exit));
+        let open_item = Item::new(button("Open").style(Self::button_non_backround).on_press(Message::Open));
+        let save_item = Item::new(button("Save").style(Self::button_non_backround).on_press(Message::Save));
+        let save_as_item = Item::new(button("Save As").style(Self::button_non_backround).on_press(Message::SaveAs));
+        let exit_item = Item::new(button("Exit").style(Self::button_non_backround).on_press(Message::Exit));
 
         let file_menu = Item::with_menu(
             button("File"),
-            Menu::new(vec![open_item, save_item, save_as_item, exit_item]).width(100),
+            Menu::new(vec![open_item, save_item, save_as_item, exit_item]).width(80),
         );
 
         let menu_bar = MenuBar::new(vec![file_menu]);
